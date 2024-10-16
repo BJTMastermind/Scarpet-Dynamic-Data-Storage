@@ -1,3 +1,9 @@
+import('extensions', 'all_extensions_functions');
+for(all_extensions_functions(), import('extensions', _));
+
+import('encoder', 'all_encoder_functions');
+for(all_encoder_functions(), import('encoder', _));
+
 global_DIMENSIONS = ['minecraft:overworld', 'minecraft:the_nether', 'minecraft:the_end'];
 global_MAX_SIZE = 48*48*27;
 global_offset = 0;
@@ -236,6 +242,28 @@ read_double(... littleEndian_offset) -> (
     return(long_to_double_bits(value));
 );
 
+read_string(... charSet_littleEndian_offset) -> (
+    [charSet, little_endian, offset] = __values_and_defaults(charSet_littleEndian_offset, 'utf-8', false, global_offset);
+
+    if(length(charSet_littleEndian_offset) > 2,
+        global_offset = offset;
+    );
+
+    len = read_ushort(little_endian, offset);
+    offset += 2;
+
+    str_bytes = [];
+    c_for(i = 0, i < len, i += 1,
+        put(str_bytes, i, _read(offset + i));
+    );
+
+    encoder_init(charSet);
+    value = decode(str_bytes, little_endian);
+
+    global_offset += length(value);
+    return(value);
+);
+
 _read(... offset) -> (
     [offset] = __values_and_defaults(offset, global_offset);
 
@@ -297,86 +325,6 @@ all_functions() -> (
         'read_boolean', 'read_ubyte', 'read_byte', 'read_ushort', 'read_short', 'read_uint', 'read_int',
         'read_ulong', 'read_long', 'read_float', 'read_double', '_read', '_write'
     ]);
-);
-
-int_to_float_bits(value) -> (
-    if(value < 0 || value > 0xFFFFFFFF,
-        print(format('r Input must be a 32-bit unsigned integer.'));
-        return();
-    );
-
-    sign = bitwise_and(bitwise_shift_right(value, 31), 0x01);
-    exponent = bitwise_and(bitwise_shift_right(value, 23), 0xFF);
-    mantissa = bitwise_and(value, 0x7FFFFF);
-
-    if(exponent == 0 && mantissa == 0,
-        // Zero case
-        return(0.0);
-    , if(exponent == 0xFF,
-        if(mantissa != 0,
-            // NaN case
-            return('NaN');
-        ,
-            // Infinity case
-            if(sign == 0, return('Infinity'), return('-Infinity'));
-        );
-    ));
-
-    // Normalize exponent
-    exponent = exponent - 127;
-
-    float_value = (-1) ^ sign * (1 + mantissa / bitwise_shift_left(1, 23)) * (2 ^ exponent);
-    return(float_value);
-);
-
-float_to_int_bits(value) -> (
-    if(value == 0.0,
-        // Zero case
-        return(0);
-    , if(value != value,
-        // NaN case
-        return(0x7FFFFFFF);
-    , if(value == 'Infinity',
-        // Infinity case
-        return(0x7F800000);
-    , if(value == '-Infinity',
-        // -Infinity case
-        return(0xFF800000);
-    ))));
-
-    // Extract the sign, exponent, and mantissa
-    sign = 0;
-    if(value < 0,
-        sign = 1;
-        value = -value;
-    );
-
-    // Normalize the value
-    exponent = 0;
-    while(value >= 2.0,
-        value = value / 2.0;
-        exponent += 1;
-    );
-    while(value < 1.0 && value > 0.0,
-        value = value * 2.0;
-        exponent = exponent - 1;
-    );
-
-    // Adjust for bias (127)
-    exponent += 127;
-
-    // Construct the mantissa
-    mantissa = bitwise_and(number((value - 1) * bitwise_shift_left(1, 23)), 0x7FFFFF);
-
-    int_value = bitwise_or(bitwise_shift_left(sign, 31), bitwise_or(bitwise_shift_left(exponent, 23), mantissa));
-    return(int_value);
-);
-
-__values_and_defaults(arguments, ... defaults) -> (
-    c_for(i = length(arguments), i < length(defaults), i += 1,
-        put(arguments, i, get(defaults, i));
-    );
-    return(arguments);
 );
 
 __config() -> {
