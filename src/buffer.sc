@@ -323,7 +323,7 @@ all_functions() -> (
     return([
         'init', 'MAX_SIZE', 'clear', 'get_dimension', 'get_offset', 'get_offset_location', 'set_offset',
         'read_boolean', 'read_ubyte', 'read_byte', 'read_ushort', 'read_short', 'read_uint', 'read_int',
-        'read_ulong', 'read_long', 'read_float', 'read_double', '_read', '_write'
+        'read_ulong', 'read_long', 'read_float', 'read_double', 'read_string'
     ]);
 );
 

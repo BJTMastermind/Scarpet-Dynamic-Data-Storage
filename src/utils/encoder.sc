@@ -56,30 +56,30 @@ __encode_utf8(string) -> (
 
         // 1 byte character
         if(code_point <= 0x7F,
-            put(bytes, length(bytes), code_point);
+            put(bytes, null, code_point);
             continue();
         );
 
         // 2 byte character
         if(code_point <= 0x7FF,
-            put(bytes, length(bytes), bitwise_or(0xC0, bitwise_shift_right(code_point, 6)));
-            put(bytes, length(bytes), bitwise_or(0x80, bitwise_and(code_point, 0x3F)));
+            put(bytes, null, bitwise_or(0xC0, bitwise_shift_right(code_point, 6)));
+            put(bytes, null, bitwise_or(0x80, bitwise_and(code_point, 0x3F)));
             continue();
         );
 
         // 3 byte character
         if(code_point <= 0xFFFF,
-            put(bytes, length(bytes), bitwise_or(0xE0, bitwise_shift_right(code_point, 12)));
-            put(bytes, length(bytes), bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 6), 0x3F)));
-            put(bytes, length(bytes), bitwise_or(0x80, bitwise_and(code_point, 0x3F)));
+            put(bytes, null, bitwise_or(0xE0, bitwise_shift_right(code_point, 12)));
+            put(bytes, null, bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 6), 0x3F)));
+            put(bytes, null, bitwise_or(0x80, bitwise_and(code_point, 0x3F)));
             continue();
         );
 
         // 4 byte character
-        put(bytes, length(bytes), bitwise_or(0xF0, bitwise_shift_right(code_point, 18)));
-        put(bytes, length(bytes), bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 12), 0x3F)));
-        put(bytes, length(bytes), bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 6), 0x3F)));
-        put(bytes, length(bytes), bitwise_or(0x80, bitwise_shift_right(code_point, 0x3F)));
+        put(bytes, null, bitwise_or(0xF0, bitwise_shift_right(code_point, 18)));
+        put(bytes, null, bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 12), 0x3F)));
+        put(bytes, null, bitwise_or(0x80, bitwise_and(bitwise_shift_right(code_point, 6), 0x3F)));
+        put(bytes, null, bitwise_or(0x80, bitwise_shift_right(code_point, 0x3F)));
     );
 
     result = __concat_array(__number_to_bytes(length(bytes), 2), bytes);
@@ -90,7 +90,48 @@ __encode_utf8(string) -> (
 __encode_utf16(string, ... little_endian) -> (
     [little_endian] = __values_and_defaults(little_endian, false);
 
-    _
+    bytes = [];
+
+    c_for(i = 0, i < length(string), i += 1,
+        code_point = code_point_at(string, i);
+
+        if(code_point > 0xFFFF,
+            code_point = code_point - 0x10000;
+            highSurrogate;
+            lowSurrogate;
+
+            if(little_endian,
+                highSurrogate = bitwise_or(bitwise_shift_right(code_point, 10), 0xD800);
+                lowSurrogate = bitwise_or(bitwise_shift_right(code_point, 0x3FF), 0xDC00);
+
+                put(bytes, null, bitwise_and(highSurrogate, 0xFF));
+                put(bytes, null, bitwise_shift_right(highSurrogate, 8));
+                put(bytes, null, bitwise_and(lowSurrogate, 0xFF));
+                put(bytes, null, bitwise_shift_right(lowSurrogate, 8));
+            ,
+                highSurrogate = bitwise_or(0xD800, bitwise_shift_right(code_point, 10));
+                lowSurrogate = bitwise_or(0xDC00, bitwise_shift_right(code_point, 0x3FF));
+
+                put(bytes, null, bitwise_shift_right(highSurrogate, 8));
+                put(bytes, null, bitwise_and(highSurrogate, 0xFF));
+                put(bytes, null, bitwise_shift_right(lowSurrogate, 8));
+                put(bytes, null, bitwise_and(lowSurrogate, 0xFF));
+            );
+            continue();
+        );
+
+        if(little_endian,
+            put(bytes, null, bitwise_and(code_point, 0xFF));
+            put(bytes, null, bitwise_shift_right(code_point, 8));
+        ,
+            put(bytes, null, bitwise_shift_right(code_point, 8));
+            put(bytes, null, bitwise_and(code_point, 0xFF));
+        );
+    );
+
+    result = __concat_array(__number_to_bytes(length(bytes), 2, little_endian), bytes);
+
+    return(result);
 );
 
 ////////////////////////////////////////
@@ -155,7 +196,39 @@ __decode_utf8(bytes) -> (
 __decode_utf16(bytes, ... little_endian) -> (
     [little_endian] = __values_and_defaults(little_endian, false);
 
-    _
+    string = '';
+
+    c_for(i = 0, i < length(bytes), i += 2,
+        value = if(little_endian,
+            bitwise_or(bytes:i, bitwise_shift_left(byte:(i + 1), 8));
+        ,
+            bitwise_or(bitwise_shift_left(byte:i, 8), bytes:(i + 1));
+        );
+
+        if(value >= 0xD800 && value <= 0xDFFF,
+            highSurrogate = value;
+            i += 2;
+
+            lowSurrogate = if(little_endian,
+                bitwise_or(bytes:i, bitwise_shift_left(byte:(i + 1), 8));
+            ,
+                bitwise_or(bitwise_shift_left(byte:i, 8), bytes:(i + 1));
+            );
+
+            code_point = if(little_endian,
+                0x10000 + bitwise_or(bitwise_and(lowSurrogate, 0xDC00), bitwise_shift_left(bitwise_and(highSurrogate, 0xD800), 10));
+            ,
+                0x10000 + bitwise_or(bitwise_shift_left(bitwise_and(highSurrogate, 0xD800), 10), bitwise_and(lowSurrogate, 0xDC00));
+            );
+
+            string += from_code_point(code_point);
+            continue();
+        );
+
+        string += from_code_point(value);
+    );
+
+    return(string);
 );
 
 //////////////////////////////////////
@@ -173,7 +246,7 @@ __number_to_bytes(value, byteCount, ... little_endian) -> (
             bitwise_and(bitwise_shift_right(value, ((byteCount - 1 - i) * 8)), 0xFF);
         );
 
-        put(result, length(result), byte);
+        put(result, null, byte);
     );
     return(result);
 );
@@ -181,7 +254,7 @@ __number_to_bytes(value, byteCount, ... little_endian) -> (
 __concat_array(array1, array2) -> (
     result = [];
     c_for(i = 0, i < (length(array1) + length(array2)), i += 1,
-        put(result, length(result), if(i < length(array1), get(array1, i), get(array2, i - length(array1))));
+        put(result, null, if(i < length(array1), get(array1, i), get(array2, i - length(array1))));
     );
     return(result);
 );
